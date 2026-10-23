@@ -1,0 +1,63 @@
+# Robot pilnujący terminów na osocze (RCKiK Poznań) – działa na serwerach GitHuba.
+# Każde uruchomienie pracuje ~5,5 h i sprawdza terminy co ~90 s; cron co 30 min
+# dokłada kolejne uruchomienie do kolejki, więc kolejna tura startuje zaraz po poprzedniej.
+
+name: Monitor osocza
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_email:
+        description: "Tylko wyślij testowy e-mail"
+        type: boolean
+        default: false
+
+concurrency:
+  group: osocze
+  cancel-in-progress: false
+
+env:
+  TZ: Europe/Warsaw
+  SMTP_HOST: ${{ secrets.SMTP_HOST }}
+  SMTP_PORT: ${{ secrets.SMTP_PORT }}
+  SMTP_USER: ${{ secrets.SMTP_USER }}
+  SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+  SMTP_FROM: ${{ secrets.SMTP_FROM }}
+  MAIL_TO: ${{ secrets.MAIL_TO }}
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test e-mail
+        if: ${{ inputs.test_email }}
+        run: python bot_osocze.py --test
+
+      # Pamięć wysłanych terminów między turami, żeby nie dublować maili.
+      - name: Wczytaj stan
+        if: ${{ !inputs.test_email }}
+        uses: actions/cache/restore@v4
+        with:
+          path: wyslane_terminy.json
+          key: stan-${{ github.run_id }}
+          restore-keys: stan-
+
+      - name: Pilnuj terminów
+        if: ${{ !inputs.test_email }}
+        run: python bot_osocze.py --max-minutes 330
+
+      - name: Zapisz stan
+        if: ${{ always() && !inputs.test_email }}
+        uses: actions/cache/save@v4
+        with:
+          path: wyslane_terminy.json
+          key: stan-${{ github.run_id }}
