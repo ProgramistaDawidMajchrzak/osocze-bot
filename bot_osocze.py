@@ -50,6 +50,11 @@ LOG_FILE = BASE_DIR / "bot_osocze.log"
 
 log = logging.getLogger("osocze")
 
+# Serwer RCKiK nie wysyła certyfikatu pośredniego. Windows dociąga go sam,
+# Linux (GitHub Actions) nie – dlatego dokładamy go z repozytorium.
+SSL_CONTEXT = ssl.create_default_context()
+SSL_CONTEXT.load_verify_locations(cafile=BASE_DIR / "certs" / "nazwassl_dv_tls_g2_e29_ca.pem")
+
 
 def get_json(url):
     """Zwraca JSON albo None, gdy API odpowie błędem 400 (= brak terminów)."""
@@ -58,7 +63,7 @@ def get_json(url):
         "Accept": "application/json",
     })
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20, context=SSL_CONTEXT) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as e:
         if e.code == 400:
